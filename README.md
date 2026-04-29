@@ -54,13 +54,23 @@ intk litellm.models | intk litellm.test
 intk litellm.test --models '["my-model"]'
 ```
 
+### `litellm.list-opencode` — List OpenCode providers and models
+
+Lists the configured providers from `~/.config/opencode/opencode.json` and
+the model ids currently present under each provider.
+
+```bash
+intk litellm.list-opencode
+```
+
 ### `litellm.add-to-opencode` — Sync models into OpenCode
 
 Reads `~/.config/opencode/opencode.json` (JSON with Comments), fetches the
-current model list from the LiteLLM proxy, and updates the `models` map of
-the matching provider block — removing models that are no longer active and
-adding new ones.  A timestamped backup is written next to the file before
-any change is made.
+current model list from one or more LiteLLM providers, and updates the
+`models` map of each matching provider block — removing models that are no
+longer active and adding new ones. If a provider id does not already exist,
+it is created automatically. A timestamped backup is written next to the file
+before any change is made.
 
 ```bash
 intk litellm.add-to-opencode
@@ -70,11 +80,34 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--url` | LiteLLM proxy URL (or set `litellm.url` in config) |
-| `--api-key` | Virtual API key (or set `litellm.api_key` in config) |
-| `--provider-id` | Provider key inside `opencode.json` (auto-detected when only one exists) |
+| `--url` | LiteLLM proxy URL for single-provider usage (or set `litellm.url` in config) |
+| `--api-key` | Virtual API key for single-provider usage (or set `litellm.api_key` in config) |
+| `--provider-id` | Provider key inside `opencode.json`; existing providers are updated and missing ones are created |
+| `--provider` | Provider spec in the form `name:url:api-key`; may be passed multiple times |
 | `--config-path` | Path to `opencode.json` (default: `~/.config/opencode/opencode.json`) |
 | `--pick` / `-i` | Interactively select which models to include via fzf (or rich fallback) |
+
+You can now upsert multiple providers in one run by repeating `--provider`.
+The `name` part is matched against provider ids using fnmatch-style patterns,
+so the same `url` can be reused with different API keys.
+
+```bash
+intk litellm.add-to-opencode \
+  --provider 'team-a:https://litellm.example.com:KEY_A' \
+  --provider 'team-b:https://litellm.example.com:KEY_B'
+```
+
+Pattern matching is also supported:
+
+```bash
+intk litellm.add-to-opencode \
+  --provider 'team-*:https://litellm.example.com:SHARED_KEY'
+```
+
+When `--provider` is omitted, the command falls back to `--url` / `--api-key`
+or the configured `litellm.url` and `litellm.api_key` values. When
+`--provider-id` names a provider that is not yet present, the command creates
+it and fills its `models` map from the fetched model list.
 
 #### Interactive model selection
 
@@ -88,13 +121,24 @@ intk litellm.add-to-opencode --pick
 > **Note:** Install [fzf](https://github.com/junegunn/fzf) for full multi-select
 > support.  Without it, a rich-based numbered selector is used as a fallback.
 
+### `litellm.list-zed` — List Zed providers and models
+
+Lists the configured `language_models.openai_compatible` providers from
+`~/.config/zed/settings.json` and the model names currently present under
+each provider.
+
+```bash
+intk litellm.list-zed
+```
+
 ### `litellm.add-to-zed` — Sync models into Zed
 
 Reads `~/.config/zed/settings.json` (JSON with Comments) and replaces the
-`available_models` array of the target `language_models.openai_compatible`
-provider.  Only the array is rewritten; all other content — including
-comments — is preserved verbatim.  A timestamped backup is written next to
-the file before any change is made.
+`available_models` array of the matching
+`language_models.openai_compatible` providers. Missing providers are created
+automatically. Only those arrays are rewritten; all other content —
+including comments — is preserved verbatim. A timestamped backup is written
+next to the file before any change is made.
 
 ```bash
 intk litellm.add-to-zed
@@ -104,11 +148,28 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--url` | LiteLLM proxy URL (or set `litellm.url` in config) |
-| `--api-key` | Virtual API key (or set `litellm.api_key` in config) |
-| `--provider-id` | Key inside `language_models.openai_compatible` (auto-detected when only one exists) |
+| `--url` | LiteLLM proxy URL for single-provider usage (or set `litellm.url` in config) |
+| `--api-key` | Virtual API key for single-provider usage (or set `litellm.api_key` in config) |
+| `--provider-id` | Provider key inside `language_models.openai_compatible`; existing providers are updated and missing ones are created |
+| `--provider` | Provider spec in the form `name:url:api-key`; may be passed multiple times |
 | `--config-path` | Path to `settings.json` (default: `~/.config/zed/settings.json`) |
 | `--pick` / `-i` | Interactively select which models to include via fzf (or rich fallback) |
+
+You can now upsert multiple Zed providers in one run by repeating
+`--provider`. The `name` part is matched against configured provider ids
+using fnmatch-style patterns, which makes it easy to target multiple
+providers while still allowing the same `url` to be used more than once.
+
+```bash
+intk litellm.add-to-zed \
+  --provider 'team-a:https://litellm.example.com:KEY_A' \
+  --provider 'team-b:https://litellm.example.com:KEY_B'
+```
+
+When `--provider` is omitted, the command falls back to `--url` / `--api-key`
+or the configured `litellm.url` and `litellm.api_key` values. When
+`--provider-id` names a provider that is not yet present, the command creates
+it with the provided LiteLLM connection details and generated model entries.
 
 #### Interactive model selection
 
@@ -131,6 +192,10 @@ intk -x config.set --location user -p litellm.api_key -v <key here>
 ### Retrieving the key from 1Password
 
 Requires the [`invoke-toolkit-1password`](https://github.com/D3f0/invoke-toolkit-1password) extension.
+
+For multi-provider upserts, prefer resolving secrets at invocation time and
+passing them through repeated `--provider name:url:api-key` arguments instead
+of storing every key in config.
 
 ```bash
 intk -x config.set --location user -p litellm.api_key -v $(intk 1password.password-by-url --url-part litellm)
