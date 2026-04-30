@@ -159,9 +159,13 @@ def _resolve_provider_syncs(
                         "Please make the patterns disjoint."
                     )
                 matched_provider_ids.add(provider_id)
-                resolved_spec = _resolve_spec_from_existing(ctx, spec, provider_id, providers or {})
+                resolved_spec = _resolve_spec_from_existing(
+                    ctx, spec, provider_id, providers or {}
+                )
                 syncs.append(
-                    ProviderSync(provider_id=provider_id, spec=resolved_spec, exists=True)
+                    ProviderSync(
+                        provider_id=provider_id, spec=resolved_spec, exists=True
+                    )
                 )
             continue
 
@@ -200,7 +204,9 @@ def _resolve_spec_from_existing(
 
     existing_options: dict = providers.get(provider_id, {}).get("options", {})
     resolved_url = spec.url if spec.url is not None else existing_options.get("baseURL")
-    resolved_key = spec.api_key if spec.api_key is not None else existing_options.get("apiKey")
+    resolved_key = (
+        spec.api_key if spec.api_key is not None else existing_options.get("apiKey")
+    )
 
     if resolved_url is None:
         ctx.rich_exit(
@@ -245,18 +251,27 @@ def _pick_active_models(
     return list(chosen)
 
 
-def _get_opencode_config(config_path: str) -> tuple[pathlib.Path, dict]:
+def _get_opencode_config(
+    config_path: str, *, create_if_missing: bool = False
+) -> tuple[pathlib.Path, dict]:
     cfg_path = (
         pathlib.Path(config_path).expanduser() if config_path else OPENCODE_CONFIG_PATH
     )
     if not cfg_path.exists():
-        raise FileNotFoundError(
-            dedent(f"""\
-                OpenCode config not found at {cfg_path}.
-                Please create it first or pass --config-path.
-            """)
-        )
-    raw_text = cfg_path.read_text(encoding="utf-8")
+        if not create_if_missing:
+            raise FileNotFoundError(
+                dedent(f"""\
+                    OpenCode config not found at {cfg_path}.
+                    Please create it first or pass --config-path.
+                """)
+            )
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        return cfg_path, {}
+
+    raw_text = cfg_path.read_text(encoding="utf-8").strip()
+    if not raw_text:
+        return cfg_path, {}
+
     return cfg_path, jsonclark.loads(raw_text)
 
 
@@ -413,16 +428,10 @@ def add_to_opencode(
     """
     provider_specs = _provider_specs_from_args(ctx, provider, provider_id, url, api_key)
 
-    try:
-        cfg_path, config = _get_opencode_config(config_path)
-    except FileNotFoundError as exc:
-        ctx.rich_exit(str(exc))
+    cfg_path, config = _get_opencode_config(config_path, create_if_missing=True)
 
-    providers: dict = config.get("provider", {})
-    if not providers:
-        ctx.rich_exit(
-            "No [bold]provider[/] key found in opencode.json. Nothing to update."
-        )
+    config.setdefault("$schema", "https://opencode.ai/config.json")
+    providers: dict = config.setdefault("provider", {})
 
     provider_syncs = _resolve_provider_syncs(
         ctx, provider_specs, list(providers.keys()), providers
@@ -456,17 +465,23 @@ def add_to_opencode(
                 updated_models[model_id] = {"name": model_id}
 
         if not sync.exists:
+            options: dict = {}
+            if sync.spec.url:
+                options["baseURL"] = sync.spec.url
+            if sync.spec.api_key:
+                options["apiKey"] = sync.spec.api_key
             provider_cfg = {
                 "models": updated_models,
-                "options": {},
+                "options": options,
             }
             providers[sync.provider_id] = provider_cfg
         else:
             provider_cfg["models"] = updated_models
         changes.append((sync.provider_id, removed, added, len(updated_models)))
 
-    backup_path = _backup(cfg_path)
-    ctx.print_err(f"[dim]Backup written to {backup_path}[/]")
+    if cfg_path.exists():
+        backup_path = _backup(cfg_path)
+        ctx.print_err(f"[dim]Backup written to {backup_path}[/]")
 
     cfg_path.write_text(
         json.dumps(config, indent=2, ensure_ascii=False) + "\n",
