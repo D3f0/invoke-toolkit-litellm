@@ -69,8 +69,11 @@ Reads `~/.config/opencode/opencode.json` (JSON with Comments), fetches the
 current model list from one or more LiteLLM providers, and updates the
 `models` map of each matching provider block — removing models that are no
 longer active and adding new ones. If a provider id does not already exist,
-it is created automatically. A timestamped backup is written next to the file
-before any change is made.
+it is created automatically. If the config file does not exist or is empty
+it will be created automatically with the correct `$schema` reference.
+New provider blocks include `baseURL` and `apiKey` in their `options`.
+A timestamped backup is written next to the file before any change is made
+(skipped for brand-new files).
 
 ```bash
 intk litellm.add-to-opencode

@@ -35,3 +35,8 @@ path = "src/invoke_toolkit_litellm/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/invoke_toolkit_litellm"]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
